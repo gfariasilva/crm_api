@@ -2,20 +2,21 @@ from flask import request, jsonify
 from flask_restful import Resource
 from sqlalchemy import create_engine, text
 
-db_connect = create_engine('sqlite:///exemplo.db')
+db_connect = create_engine('sqlite:///exemplo.db?check_same_thread=False')
 
 class Customers(Resource):
     def get(self):
         conn = db_connect.connect()
-        query = conn.execute(text("SELECT Customer.*, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.cpf"))
-        result = [dict(zip(tuple(query.keys()), i)) for i in query.cursor]
+        query = conn.execute(text("SELECT Customer.*, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf"))
+
+        result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
 
     def post(self):
         conn = db_connect.connect()
 
-        conn.execute(
-            text("insert into Customer values(:cpf, :name, :email, :password, :phone, null, null)"), 
+        # Inserir cliente
+        conn.execute(text("INSERT INTO Customer (cpf, name, email, password, phone) VALUES (:cpf, :name, :email, :password, :phone)"),
             {
                 "cpf": request.json['cpf'],
                 "name": request.json['name'],
@@ -25,64 +26,55 @@ class Customers(Resource):
             }
         )
 
-        conn.execute(
-            text("insert into Address values(:cep, :cpf, :neighborhood, :street, :city, :state, null)"), 
+        # Inserir endereço
+        conn.execute(text("INSERT INTO Address (cep, customer_cpf, neighborhood, street, city, state, number) VALUES (:cep, :customer_cpf, :neighborhood, :street, :city, :state, :number)"),
             {
                 "cep": request.json['cep'],
-                "cpf": request.json['cpf'],
+                "customer_cpf": request.json['cpf'],
                 "neighborhood": request.json['neighborhood'],
                 "street": request.json['street'],
-                "state": request.json['state']
+                "city": request.json['city'],
+                "state": request.json['state'],
+                "number": request.json['number']
             }
         )
 
-        conn.connection.commit()  
+        # Retornar o cliente e endereço inseridos
+        query = conn.execute(text('SELECT Customer.*, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf WHERE Customer.cpf = :cpf'),
+            {'cpf': request.json['cpf']}
+        )
 
-        query = conn.execute(text('SELECT Customer.*, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.cpf WHERE Customer.cpf = :cpf'),
-            {'cpf': request.json['cpf']})
-
-        result = [dict(zip(tuple(query.keys()), i)) for i in query.cursor]
+        result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
 
     def put(self):
         conn = db_connect.connect()
 
-        conn.execute(
-            text("update Customer set email = :email, phone = :phone WHERE cpf = :cpf"), 
+        # Atualizar cliente
+        conn.execute(text("UPDATE Customer SET email = :email, phone = :phone WHERE cpf = :cpf"),
             {
+                "cpf": request.json['cpf'],
                 "email": request.json['email'],
-                "phone": request.json['phone'],
+                "phone": request.json['phone']
             }
         )
 
-        conn.execute(
-            text("update Adress set cep = :cep, neighborhood = :neighborhood, street = :street, state = :state WHERE cpf = :cpf"), 
+        # Atualizar endereço
+        conn.execute(text("UPDATE Address SET cep = :cep, neighborhood = :neighborhood, street = :street, city = :city, state = :state, number = :number WHERE customer_cpf = :cpf"),
             {
                 "cep": request.json['cep'],
-                "cpf": request.json['cpf'],
                 "neighborhood": request.json['neighborhood'],
                 "street": request.json['street'],
-                "state": request.json['state']
+                "city": request.json['city'],
+                "state": request.json['state'],
+                "number": request.json['number'],
+                "cpf": request.json['cpf']
             }
         )
 
-        conn.connection.commit()  
+        query = conn.execute(text('SELECT Customer.*, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf WHERE Customer.cpf = :cpf'),
+            {'cpf': request.json['cpf']}
+        )
 
-        query = conn.execute(
-            text('SELECT Customer.*, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.cpf WHERE Customer.cpf = :cpf'),
-            {'cpf': request.json['cpf']})
-        result = [dict(zip(tuple(query.keys()), i)) for i in query.cursor]
-        return jsonify(result)
-
-class UserById(Resource):
-    def delete(self, id):
-        conn = db_connect.connect()
-        conn.execute(text("delete from user where id = :id"), {"id": int(id)})
-        conn.connection.commit()  
-        return {"status": "success"}
-
-    def get(self, id):
-        conn = db_connect.connect()
-        query = conn.execute(text("select * from user where id = :id"), {"id": int(id)})
-        result = [dict(zip(tuple(query.keys()), i)) for i in query.cursor]
+        result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
