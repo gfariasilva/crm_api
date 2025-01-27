@@ -1,102 +1,114 @@
 from flask import request, jsonify
 from flask_restful import Resource
 from sqlalchemy import create_engine, text
+import bcrypt
 
-db_connect = create_engine('sqlite:///exemplo.db')
+db_connect = create_engine('sqlite:///exemplo.db', connect_args={'check_same_thread': False})
 
 class Providers(Resource):
     def get(self):
         conn = db_connect.connect()
-        query = conn.execute(
-            text("SELECT Provider.*, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf")
-        )
+        query = conn.execute(text("SELECT Provider.cpf, Provider.name, Provider.email, Provider.phone, Provider.budget, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf"))
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
 
     def post(self):
         conn = db_connect.connect()
-        data = request.json
 
-        # Validação básica para garantir que os dados obrigatórios existam
-        required_fields = ["cpf", "name", "email", "password", "phone", "budget", "cep", "neighborhood", "street", "city", "state", "number"]
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing field: {field}"}), 400
+        hashed_password = bcrypt.hashpw(request.json['password'].encode('utf-8'), bcrypt.gensalt())
 
         # Inserir fornecedor
-        conn.execute(
-            text("INSERT INTO Provider (cpf, name, email, password, phone, budget) VALUES (:cpf, :name, :email, :password, :phone, :budget)"),
+        conn.execute(text("INSERT INTO Provider (cpf, name, email, password, phone) VALUES (:cpf, :name, :email, :password, :phone)"),
             {
-                "cpf": data['cpf'],
-                "name": data['name'],
-                "email": data['email'],
-                "password": data['password'],
-                "phone": data['phone'],
-                "budget": data['budget']
+                "cpf": request.json['cpf'],
+                "name": request.json['name'],
+                "email": request.json['email'],
+                "password": hashed_password,
+                "phone": request.json['phone'],
             }
         )
+
+        conn.connection.commit()
 
         # Inserir endereço
-        conn.execute(
-            text("INSERT INTO Address (cep, provider_cpf, neighborhood, street, city, state, number) VALUES (:cep, :provider_cpf, :neighborhood, :street, :city, :state, :number)"),
+        conn.execute(text("INSERT INTO Address (cep, provider_cpf, neighborhood, street, city, state, number) VALUES (:cep, :provider_cpf, :neighborhood, :street, :city, :state, :number)"),
             {
-                "cep": data['cep'],
-                "provider_cpf": data['cpf'],
-                "neighborhood": data['neighborhood'],
-                "street": data['street'],
-                "city": data['city'],
-                "state": data['state'],
-                "number": data['number']
+                "cep": request.json['cep'],
+                "provider_cpf": request.json['cpf'],
+                "neighborhood": request.json['neighborhood'],
+                "street": request.json['street'],
+                "city": request.json['city'],
+                "state": request.json['state'],
+                "number": request.json['number']
             }
         )
 
+        conn.connection.commit()
+
+        #Inserir orçamentos
+        for i in request.json['budget']:
+            conn.execute(text("INSERT INTO Budget (cpf, state, amount) VALUES (:cpf, :state, :amount)"),
+                {
+                    "cpf": request.json['cpf'],
+                    "state": i['state'],
+                    "amount": i['amount']
+                }
+            )
+
+            conn.connection.commit()
+
+        """ 
+        {
+            "cpf": cpf,
+            "budget": {
+                "state": state,
+                "amount": amount
+            }[]
+        }
+        """
+
         # Retornar o fornecedor e endereço inseridos
-        query = conn.execute(
-            text('SELECT Provider.*, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf WHERE Provider.cpf = :cpf'),
-            {'cpf': data['cpf']}
+        query = conn.execute(text('SELECT Provider.cpf, Provider.name, Provider.email, Provider.phone, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf WHERE Provider.cpf = :cpf'),
+            {'cpf': request.json['cpf']}
         )
+
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
 
     def put(self):
         conn = db_connect.connect()
-        data = request.json
-
-        # Validação básica
-        required_fields = ["cpf", "email", "phone", "budget", "cep", "neighborhood", "street", "city", "state", "number"]
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing field: {field}"}), 400
 
         # Atualizar fornecedor
-        conn.execute(
-            text("UPDATE Provider SET email = :email, phone = :phone, budget = :budget WHERE cpf = :cpf"),
+        conn.execute(text("UPDATE Provider SET email = :email, phone = :phone WHERE cpf = :cpf"),
             {
-                "cpf": data['cpf'],
-                "email": data['email'],
-                "phone": data['phone'],
-                "budget": data['budget']
+                "cpf": request.json['cpf'],
+                "email": request.json['email'],
+                "phone": request.json['phone'],
+                "budget": request.json['budget']
             }
         )
+
+        conn.connection.commit()
 
         # Atualizar endereço
-        conn.execute(
-            text("UPDATE Address SET cep = :cep, neighborhood = :neighborhood, street = :street, city = :city, state = :state, number = :number WHERE provider_cpf = :cpf"),
+        conn.execute(text("UPDATE Address SET cep = :cep, neighborhood = :neighborhood, street = :street, city = :city, state = :state, number = :number WHERE provider_cpf = :cpf"),
             {
-                "cep": data['cep'],
-                "provider_cpf": data['cpf'],
-                "neighborhood": data['neighborhood'],
-                "street": data['street'],
-                "city": data['city'],
-                "state": data['state'],
-                "number": data['number']
+                "cep": request.json['cep'],
+                "provider_cpf": request.json['cpf'],
+                "neighborhood": request.json['neighborhood'],
+                "street": request.json['street'],
+                "city": request.json['city'],
+                "state": request.json['state'],
+                "number": request.json['number']
             }
         )
 
+        conn.connection.commit()
+
         # Retornar o fornecedor e endereço atualizados
-        query = conn.execute(
-            text('SELECT Provider.*, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf WHERE Provider.cpf = :cpf'),
-            {'cpf': data['cpf']}
+        query = conn.execute(text('SELECT Provider.cpf, Provider.name, Provider.email, Provider.phone, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf WHERE Provider.cpf = :cpf'),
+            {'cpf': request.json['cpf']}
         )
+
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
