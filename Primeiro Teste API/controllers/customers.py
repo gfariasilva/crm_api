@@ -23,9 +23,26 @@ class Customers(Resource):
 
         hashed_password = bcrypt.hashpw(request.json['password'].encode('utf-8'), bcrypt.gensalt())
 
-        # Autentica com o Google Drive
+        # Authenticate with Google Drive
         gauth = GoogleAuth()
-        gauth.LocalWebserverAuth()  # Authenticate via local webserver
+
+        # Try to load saved client credentials
+        gauth.LoadCredentialsFile("my_credentials.json")
+
+        if gauth.credentials is None:
+            # Authenticate if credentials are not available
+            gauth.LocalWebserverAuth()
+        elif gauth.access_token_expired:
+            # Refresh expired credentials
+            gauth.Refresh()
+        else:
+            # Initialize the saved credentials
+            gauth.Authorize()
+
+        # Save the credentials for the next run
+        gauth.SaveCredentialsFile("my_credentials.json")
+
+        # Initialize Google Drive instance
         drive = GoogleDrive(gauth)
 
         # Dict que guarda os arquivos advindos do put
@@ -105,9 +122,26 @@ class Customers(Resource):
     def put(self):
         conn = db_connect.connect()
 
-        # Autentica com o Google Drive
+        # Authenticate with Google Drive
         gauth = GoogleAuth()
-        gauth.LocalWebserverAuth()  # Authenticate via local webserver
+
+        # Try to load saved client credentials
+        gauth.LoadCredentialsFile("my_credentials.json")
+
+        if gauth.credentials is None:
+            # Authenticate if credentials are not available
+            gauth.LocalWebserverAuth()
+        elif gauth.access_token_expired:
+            # Refresh expired credentials
+            gauth.Refresh()
+        else:
+            # Initialize the saved credentials
+            gauth.Authorize()
+
+        # Save the credentials for the next run
+        gauth.SaveCredentialsFile("my_credentials.json")
+
+        # Initialize Google Drive instance
         drive = GoogleDrive(gauth)
 
         # Dict que guarda os arquivos advindos do put
