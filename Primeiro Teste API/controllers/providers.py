@@ -2,6 +2,10 @@ from flask import request, jsonify
 from flask_restful import Resource
 from sqlalchemy import create_engine, text
 import bcrypt
+from pydrive.auth import GoogleAuth 
+from pydrive.drive import GoogleDrive 
+import tempfile
+import os
 
 db_connect = create_engine('sqlite:///exemplo.db', connect_args={'check_same_thread': False})
 
@@ -17,14 +21,37 @@ class Providers(Resource):
 
         hashed_password = bcrypt.hashpw(request.json['password'].encode('utf-8'), bcrypt.gensalt())
 
+        gauth = GoogleAuth()
+        gauth.LocalWebserverAuth()  # Authenticate via local webserver
+        drive = GoogleDrive(gauth)
+
+        if 'file' in request.files and file.filename != '':
+            file = request.files['file']
+            file_suffix = file.filename[file.filename.find('.'):]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as temp_file:
+                temp_path = temp_file.name
+                file.save(temp_path)
+            
+        if 'file' in request.files and file.filename != '':
+            gfile = drive.CreateFile({'parents': [{'id': '1KQjnQHj4Wmrs4DuAIqdhX-x0_gWEGcF8'}]})
+            gfile.SetContentFile(temp_path)
+            gfile.Upload()
+            file_id = gfile['id']
+            file_url = f'https://drive.google.com/file/d/{file_id}/view?usp=sharing'
+
+            os.remove(temp_path)
+        else:
+            file_url = ''
+
         # Inserir fornecedor
-        conn.execute(text("INSERT INTO Provider (cpf, name, email, password, phone) VALUES (:cpf, :name, :email, :password, :phone)"),
+        conn.execute(text("INSERT INTO Provider (cpf, name, email, password, phone, document) VALUES (:cpf, :name, :email, :password, :phone, :document)"),
             {
                 "cpf": request.json['cpf'],
                 "name": request.json['name'],
                 "email": request.json['email'],
                 "password": hashed_password,
                 "phone": request.json['phone'],
+                "document": file_url
             }
         )
 
@@ -78,13 +105,36 @@ class Providers(Resource):
     def put(self):
         conn = db_connect.connect()
 
+        gauth = GoogleAuth()
+        gauth.LocalWebserverAuth()  # Authenticate via local webserver
+        drive = GoogleDrive(gauth)
+
+        if 'file' in request.files and file.filename != '':
+            file = request.files['file']
+            file_suffix = file.filename[file.filename.find('.'):]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as temp_file:
+                temp_path = temp_file.name
+                file.save(temp_path)
+            
+        if 'file' in request.files and file.filename != '':
+            gfile = drive.CreateFile({'parents': [{'id': '1KQjnQHj4Wmrs4DuAIqdhX-x0_gWEGcF8'}]})
+            gfile.SetContentFile(temp_path)
+            gfile.Upload()
+            file_id = gfile['id']
+            file_url = f'https://drive.google.com/file/d/{file_id}/view?usp=sharing'
+
+            os.remove(temp_path)
+        else:
+            file_url = ''
+
         # Atualizar fornecedor
-        conn.execute(text("UPDATE Provider SET email = :email, phone = :phone WHERE cpf = :cpf"),
+        conn.execute(text("UPDATE Provider SET email = :email, phone = :phone, document = :document WHERE cpf = :cpf"),
             {
                 "cpf": request.json['cpf'],
                 "email": request.json['email'],
                 "phone": request.json['phone'],
-                "budget": request.json['budget']
+                "budget": request.json['budget'],
+                "document": request.json['document']
             }
         )
 
