@@ -67,39 +67,41 @@ class Customers(Resource):
         gauth.LocalWebserverAuth()  # Authenticate via local webserver
         drive = GoogleDrive(gauth)
 
-        # Checa se o arquivo veio no put
-        if 'file' in request.files and file.filename != '':
-            file = request.files['file']
+        # Dict que guarda os arquivos advindos do put
+        files = {
+            'file1': '', 
+            'file2': ''
+        }
 
-            # Detecta o index do ponto '.' no nome do arquivo e pega daí pra frente, extraindo a extensão do arquivo
-            file_suffix = file.filename[file.filename.find('.'):]
+        if len(request.files):
+            for i, file in enumerate(request.files.keys()):
+                if request.files[file].filename != '':
+                    # Detecta o index do ponto '.' no nome do arquivo e pega daí pra frente, extraindo a extensão do arquivo
+                    file_suffix = file[request.files[file].filename.find('.'):]
 
-            # Salva o arquivo localmente em uma pasta temporária do PC
-            with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as temp_file:
-                temp_path = temp_file.name
-                file.save(temp_path)
+                    # Salva o arquivo localmente em uma pasta temporária do PC
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as temp_file:
+                        temp_path = temp_file.name
+                        request.files[file].save(temp_path)
+                        # Salva o caminho do arquivo temporário no dicionário
+                        files[f'file{i+1}'] = temp_path
 
         try:
-            # Checa se o arquivo veio no put
-            if 'file' in request.files and file.filename != '':
-                # Faz o upload no Google Drive no id de uma pasta predeterminada
+            # Realiza o upload para o Google Drive
+            for key, temp_path in files.items():
                 gfile = drive.CreateFile({'parents': [{'id': '1KQjnQHj4Wmrs4DuAIqdhX-x0_gWEGcF8'}]})
                 gfile.SetContentFile(temp_path)
                 gfile.Upload()
-                # Pega o id do arquivo que foi subido
-                file_id = gfile['id']
-                # Monta a URL do arquivo já no Drive
-                file_url = f'https://drive.google.com/file/d/{file_id}/view?usp=sharing'
 
-                print(file_url)
-
-                # Tem certeza que o upload já foi feito antes de excluir o arquivo
-                time.sleep(1)
-
-                # Exclui o arquivo da pasta temporária
-                os.remove(temp_path)
-            else:
-                file_url = ''
+                # Substitui o caminho pelo link do Drive
+                file_url = f"https://drive.google.com/file/d/{gfile['id']}/view?usp=sharing"
+                files[key] = file_url
+                # Remove o arquivo temporário
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except PermissionError as e:
+                    print('O arquivo não pôde ser excluído.')
 
             # Atualizar cliente
             conn.execute(text("UPDATE Customer SET email = :email, phone = :phone WHERE cpf = :cpf"),
@@ -126,7 +128,7 @@ class Customers(Resource):
             conn.connection.commit()
 
             # Fetch the updated customer details
-            query = conn.execute(text('SELECT Customer.cpf, Customer.name, Customer.email, Customer.phone,, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf WHERE Customer.cpf = :cpf'),
+            query = conn.execute(text('SELECT Customer.cpf, Customer.name, Customer.email, Customer.phone, Address.* FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf WHERE Customer.cpf = :cpf'),
                 {'cpf': request.form['cpf']}
             )
             result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
