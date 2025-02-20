@@ -2,7 +2,7 @@ import requests
 
 url = "http://127.0.0.1:5000/providers"
 data = {
-    "cpf": 12345678900,
+    "cpf": 12345678901,
     "name": "João Silva",
     "email": "joao.silva@example.com",
     "password": "senha123",

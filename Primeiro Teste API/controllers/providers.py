@@ -118,6 +118,7 @@ class Providers(Resource):
         )
 
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
+
         return jsonify(result)
 
     def put(self):
@@ -170,7 +171,7 @@ class Providers(Resource):
                 "email": request.json['email'],
                 "phone": request.json['phone'],
                 "budget": request.json['budget'],
-                "document": request.json['document']
+                "document": file_url
             }
         )
 

@@ -37,11 +37,13 @@ class Login(Resource):
 
         # Verify the password
         if bcrypt.checkpw(password.encode('utf-8'), hashed_password):
-            return {
-                    "id": bcrypt.hashpw(str(user.cpf).encode('utf-8'), bcrypt.gensalt()),
+            result = {
+                    "id": str(bcrypt.hashpw(str(user.cpf).encode('utf-8'), bcrypt.gensalt())),
                     "email": user.email,
                     "name": user.name,
                     "role": role
-            }, 200
+            }
+
+            return jsonify(result)
         else:
             return {"message": "Invalid password"}, 401
