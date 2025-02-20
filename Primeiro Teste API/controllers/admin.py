@@ -5,7 +5,7 @@ import bcrypt
 
 db_connect = create_engine('sqlite:///exemplo.db', connect_args={'check_same_thread': False})
 
-class Josmar(Resource):
+class Admin(Resource):
     def get(self):
         conn = db_connect.connect()
         query = conn.execute(text("SELECT * FROM Josmar"))

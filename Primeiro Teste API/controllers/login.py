@@ -41,7 +41,7 @@ class Login(Resource):
                     "id": str(bcrypt.hashpw(str(user.cpf).encode('utf-8'), bcrypt.gensalt())),
                     "email": user.email,
                     "name": user.name,
-                    "role": role
+                    "role": role.lower()
             }
 
             return jsonify(result)

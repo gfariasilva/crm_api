@@ -3,7 +3,7 @@ from flask_restful import Api
 from controllers.customers import Customers
 from controllers.providers import Providers
 from controllers.services import Services
-from controllers.josmar import Josmar
+from controllers.admin import Admin
 from controllers.login import Login
 from flask_cors import CORS
 
@@ -15,7 +15,7 @@ api.add_resource(Customers, '/customers')
 api.add_resource(Providers, '/providers') 
 api.add_resource(Services, '/services') 
 api.add_resource(Login, '/login') 
-api.add_resource(Josmar, '/josmar') 
+api.add_resource(Admin, '/admin') 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
