@@ -8,7 +8,11 @@ db_connect = create_engine('sqlite:///exemplo.db', connect_args={'check_same_thr
 class Admin(Resource):
     def get(self):
         conn = db_connect.connect()
-        query = conn.execute(text("SELECT * FROM Josmar"))
+        query = conn.execute(text("""
+            SELECT Admin.tax, Credentials.email, Credentials.role
+            FROM Admin 
+            JOIN Credentials ON Admin.credentials = Credentials.id
+        """))
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
 
@@ -17,19 +21,33 @@ class Admin(Resource):
 
         hashed_password = bcrypt.hashpw(request.json['password'].encode('utf-8'), bcrypt.gensalt())
 
-        # Inserir fornecedor
-        conn.execute(text("INSERT INTO Josmar (email, password, budget) VALUES (:email, :password, :budget)"),
+        # Inserir credenciais
+        id = conn.execute(text("INSERT INTO Credentials (email, password, role) VALUES (:email, :password, :role) RETURNING id"),
             {
                 "email": request.json['email'],
                 "password": hashed_password,
-                "budget": request.json['budget']
+                "role": request.json['role']
+            }
+        )
+
+        id = id.fetchone()[0]
+
+        # Inserir budget no Admin
+        conn.execute(text("INSERT INTO Admin (credentials, tax) VALUES (:credentials, :tax)"),
+            {
+                "credentials": id,
+                "tax": request.json['tax']
             }
         )
 
         conn.connection.commit()
 
-        # Retornar o fornecedor e endereço inseridos
-        query = conn.execute(text('SELECT email, budget FROM Josmar'))
+        # Retornar o admin inserido
+        query = conn.execute(text("""
+            SELECT Admin.tax, Credentials.emal, Credentials.role
+            FROM Admin 
+            JOIN Credentials ON Admin.credentials = Credentials.id
+        """))
 
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
 

@@ -59,7 +59,13 @@ def upload_to_google_drive(file):
 class Providers(Resource):
     def get(self):
         conn = db_connect.connect()
-        query = conn.execute(text("SELECT Provider.cpf, Provider.name, Provider.email, Provider.phone, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf"))
+        # Implementar tabela Budget_Provider no banco
+        query = conn.execute(text("""
+            SELECT Provider.name, Provider.phone, Provider.city, Credentials.email, Credentials.role, Budget_Provider.state, Budget_Provider.cost
+            FROM Provider 
+            JOIN Credentials ON Provider.credentials = Credentials.id
+            JOIN Budget_Provider ON Provider.id = Budget_Provider.provider
+        """))
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         return jsonify(result)
 
@@ -67,48 +73,52 @@ class Providers(Resource):
         conn = db_connect.connect()
         hashed_password = bcrypt.hashpw(request.json['password'].encode('utf-8'), bcrypt.gensalt())
 
-        # Inserir fornecedor
-        conn.execute(text("INSERT INTO Provider (cpf, name, email, password, phone, document) VALUES (:cpf, :name, :email, :password, :phone, :document)"),
+        # Inserir credenciais
+        credentials_id = conn.execute(text("INSERT INTO Credentials (email, password, role) VALUES (:email, :password, :role) RETURNING id"),
             {
-                "cpf": request.json['cpf'],
-                "name": request.json['name'],
                 "email": request.json['email'],
-                "password": hashed_password.decode('utf-8'),
+                "password": hashed_password,
+                "role": request.json['role']
+            }
+        )
+
+        credentials_id = credentials_id.fetchone()[0]
+
+        # Inserir fornecedor
+        provider_id = conn.execute(text("INSERT INTO Provider (name, credentials, phone, document, city) VALUES (:name, :credentials, :phone, :document, :city) RETURNING id"),
+            {
+                "name": request.json['name'],
+                "credentials": credentials_id,
                 "phone": request.json['phone'],
-                "document": ''
+                "document": '',
+                "city": request.json['city']
             }
         )
         conn.connection.commit()
 
-        # Inserir endereço
-        conn.execute(text("INSERT INTO Address (cep, provider_cpf, neighborhood, street, city, state, number) VALUES (:cep, :provider_cpf, :neighborhood, :street, :city, :state, :number)"),
-            {
-                "cep": request.json['cep'],
-                "provider_cpf": request.json['cpf'],
-                "neighborhood": request.json['neighborhood'],
-                "street": request.json['street'],
-                "city": request.json['city'],
-                "state": request.json['state'],
-                "number": request.json['number']
-            }
-        )
-        conn.connection.commit()
+        provider_id = provider_id.fetchone()[0]
 
         # Inserir orçamentos
         for i in request.json['budget']:
-            conn.execute(text("INSERT INTO Budget (cpf, state, amount) VALUES (:cpf, :state, :amount)"),
+            conn.execute(text("INSERT INTO Budget_Provider (provider, state, state_cost) VALUES (:provider, :state, :state_cost)"),
                 {
-                    "cpf": request.json['cpf'],
+                    "provider": provider_id,
                     "state": i['state'],
-                    "amount": i['amount']
+                    "state_cost": i['state_cost']
                 }
             )
 
         conn.connection.commit()
 
         # Retornar fornecedor inserido
-        query = conn.execute(text('SELECT Provider.cpf, Provider.name, Provider.email, Provider.phone, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf WHERE Provider.cpf = :cpf'),
-            {'cpf': request.json['cpf']}
+        query = conn.execute(text("""
+            SELECT Provider.name, Provider.phone, Provider.city, Credentials.email, Credentials.role, Budget_Provider.state, Budget_Provider.cost
+            FROM Provider 
+            JOIN Credentials ON Provider.credentials = Credentials.id
+            JOIN Budget_Provider ON Provider.id = Budget_Provider.provider
+            WHERE Provider.id = :id
+        """),
+            {'id': provider_id}
         )
 
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
@@ -120,34 +130,53 @@ class Providers(Resource):
         # Upload do arquivo para o Google Drive (se houver)
         file_url = upload_to_google_drive(request.files.get('file'))
 
+        if file_url == None:
+            file_url = ''
+
         # Atualizar fornecedor
-        conn.execute(text("UPDATE Provider SET email = :email, phone = :phone, document = :document WHERE cpf = :cpf"),
+        # TER CERTEZA DE QUE O ID VAI VIR NO PAYLOAD (JSON)
+        credentials_id = conn.execute(text("UPDATE Provider SET name = :name, phone = :phone, city = :city, document = :document WHERE id = :id RETURNING credentials"),
             {
-                "cpf": request.form['cpf'],
-                "email": request.form['email'],
+                "name": request.form['name'],
                 "phone": request.form['phone'],
-                "document": file_url
+                "city": request.form['city'],
+                "document": file_url,
+                "id": request.form['id']
             }
         )
         conn.connection.commit()
 
-        # Atualizar endereço
-        conn.execute(text("UPDATE Address SET cep = :cep, neighborhood = :neighborhood, street = :street, city = :city, state = :state, number = :number WHERE provider_cpf = :cpf"),
+        credentials_id = credentials_id.fetchone()[0]
+
+        conn.execute(text("UPDATE Credentials SET email = :email WHERE id = :id"),
             {
-                "cep": request.form['cep'],
-                "cpf": request.form['cpf'],
-                "neighborhood": request.form['neighborhood'],
-                "street": request.form['street'],
-                "city": request.form['city'],
-                "state": request.form['state'],
-                "number": request.form['number']
+                "email": request.form['email'],
+                "id": credentials_id
             }
         )
+        conn.connection.commit()
+
+        # Inserir orçamentos
+        for i in request.json['budget']:
+            conn.execute(text("UPDATE Budget_Provider SET state_cost = :state_cost WHERE provider = :provider AND state = :state"),
+                {
+                    "provider": request.form['id'],
+                    "state": i['state'],
+                    "state_cost": i['state_cost']
+                }
+            )
+
         conn.connection.commit()
 
         # Retornar fornecedor atualizado
-        query = conn.execute(text('SELECT Provider.cpf, Provider.name, Provider.email, Provider.phone, Provider.document, Address.* FROM Provider JOIN Address ON Provider.cpf = Address.provider_cpf WHERE Provider.cpf = :cpf'),
-            {'cpf': request.form['cpf']}
+        query = conn.execute(text("""
+            SELECT Provider.name, Provider.phone, Provider.city, Credentials.email, Credentials.role, Budget_Provider.state, Budget_Provider.cost
+            FROM Provider 
+            JOIN Credentials ON Provider.credentials = Credentials.id
+            JOIN Budget_Provider ON Provider.id = Budget_Provider.provider
+            WHERE Provider.id = :id
+        """),
+            {'id': request.form['id']}
         )
 
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]

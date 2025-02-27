@@ -24,9 +24,12 @@ class Customers(Resource):
     def get(self):
         conn = db_connect.connect()
         query = conn.execute(text("""
-            SELECT Customer.cpf, Customer.name, Customer.email, Customer.phone, Address.*
-            FROM Customer
-            JOIN Address ON Customer.cpf = Address.customer_cpf
+            SELECT 
+                Client.name, Client.phone, Address.cep, Address.state, 
+                Address.street, Address.city, Address.number, Credentials.email, Credentials.role
+            FROM Client
+            JOIN Address ON Customer.address = Address.id
+            JOIN Credentials ON Customer.credentials = Credentials.id
         """))
         
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
@@ -81,38 +84,54 @@ class Customers(Resource):
         conn = db_connect.connect()
         hashed_password = bcrypt.hashpw(request.json['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
-        conn.execute(text("""
-            INSERT INTO Customer (cpf, name, email, password, phone, document, electricity_bill)
-            VALUES (:cpf, :name, :email, :password, :phone, :document, :electricity_bill)
+        id_credentials = conn.execute(text("""
+            INSERT INTO Credentials (email, password, role)
+            VALUES (:email, :password, :role) RETURNING id
         """), {
-            "cpf": request.json['cpf'],
-            "name": request.json['name'],
             "email": request.json['email'],
             "password": hashed_password,
+            "role": request.json['role'],
+        })
+
+        id_credentials = id_credentials.fetchone()[0]
+
+        id_address = conn.execute(text("""
+            INSERT INTO Address (cep, state, street, city, number)
+            VALUES (:cep, :state, :street, :city, :number) RETURNING id
+        """), {
+            "cep": request.json['cep'],
+            "state": request.json['state'],
+            "street": request.json['street'],
+            "city": request.json['city'],
+            "number": request.json['number']
+        })
+
+        id_address = id_address.fetchone()[0]
+
+        conn.execute(text("""
+            INSERT INTO Client (name, address, credentials, phone, document, electricity_bill)
+            VALUES (:name, :address, :credentials, :phone, :document, :electricity_bill)
+        """), {
+            "name": request.json['name'],
+            "address": id_address,
+            "credentials": id_credentials,
             "phone": request.json['phone'],
             "document": '',
             "electricity_bill": ''
         })
         
-        conn.execute(text("""
-            INSERT INTO Address (cep, customer_cpf, neighborhood, street, city, state, number)
-            VALUES (:cep, :customer_cpf, :neighborhood, :street, :city, :state, :number)
-        """), {
-            "cep": request.json['cep'],
-            "customer_cpf": request.json['cpf'],
-            "neighborhood": request.json['neighborhood'],
-            "street": request.json['street'],
-            "city": request.json['city'],
-            "state": request.json['state'],
-            "number": request.json['number']
-        })
-        
         conn.commit()
         
         query = conn.execute(text("""
-            SELECT Customer.cpf, Customer.name, Customer.email, Customer.phone, Address.*
-            FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf WHERE Customer.cpf = :cpf
-        """), {"cpf": request.json['cpf']})
+            SELECT 
+                Client.name, Client.phone, Client.electricity_bill, Client.document, 
+                Credentials.email, Credentials.role, 
+                Address.cep, Address.state, Address.street, Address.city, Address.number
+            FROM Client 
+            JOIN Address ON Client.address = Address.id 
+            JOIN Credentials ON Client.credentials = Credentials.id
+            WHERE Credentials.email = :email
+        """), {"email": request.json['email']})
         
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         conn.close()
@@ -123,39 +142,59 @@ class Customers(Resource):
         
         document_url = self.upload_to_google_drive(request.files.get('document'))
         electricity_bill_url = self.upload_to_google_drive(request.files.get('electricity_bill'))
-        
-        conn.execute(text("""
-            UPDATE Customer SET email = :email, phone = :phone,
-            document = COALESCE(:document, document),
-            electricity_bill = COALESCE(:electricity_bill, electricity_bill)
-            WHERE cpf = :cpf
+
+        if document_url == None:
+            document_url = ''
+
+        if electricity_bill_url == None:
+            electricity_bill_url = ''
+
+        # TER CERTEZA DE QUE O ID VAI VIR NO PAYLOAD (JSON)
+        update_data = conn.execute(text("""
+            UPDATE Client SET name = :name, phone = :phone, document = :document, electricity_bill = :electricity_bill)
+            WHERE id = :id RETURNING credentials, address
         """), {
-            "cpf": request.form['cpf'],
-            "email": request.form['email'],
+            "name": request.form['name'],
             "phone": request.form['phone'],
+            "id": request.form['id'],
             "document": document_url,
             "electricity_bill": electricity_bill_url
         })
-        
+
+        update_data = update_data.fetchone()
+
         conn.execute(text("""
-            UPDATE Address SET cep = :cep, neighborhood = :neighborhood, street = :street,
-            city = :city, state = :state, number = :number WHERE customer_cpf = :cpf
+            UPDATE Credentials SET email = :email
+            WHERE id = :id
+        """), {
+            "email": request.form['email'],
+            "id": update_data['credentials']
+        })
+
+        conn.execute(text("""
+            UPDATE Address SET cep = :cep, state = :state, street = :street,
+            city = :city, number = :number WHERE id = :id
         """), {
             "cep": request.form['cep'],
-            "neighborhood": request.form['neighborhood'],
+            "state": request.form['state'],
             "street": request.form['street'],
             "city": request.form['city'],
-            "state": request.form['state'],
             "number": request.form['number'],
-            "cpf": request.form['cpf']
+            "id": update_data['address']
         })
         
         conn.commit()
         
         query = conn.execute(text("""
-            SELECT Customer.cpf, Customer.name, Customer.email, Customer.phone, Customer.document, Customer.electricity_bill, Address.*
-            FROM Customer JOIN Address ON Customer.cpf = Address.customer_cpf WHERE Customer.cpf = :cpf
-        """), {"cpf": request.form['cpf']})
+            SELECT 
+                Client.name, Client.phone, Client.electricity_bill, Client.document, 
+                Credentials.email, Credentials.role, 
+                Address.cep, Address.state, Address.street, Address.city, Address.number
+            FROM Client 
+            JOIN Address ON Client.address = Address.id 
+            JOIN Credentials ON Client.credentials = Credentials.id
+            WHERE Credentials.email = :email
+        """), {"email": request.form['email']})
         
         result = [dict(zip(tuple(query.keys()), i)) for i in query.fetchall()]
         conn.close()
