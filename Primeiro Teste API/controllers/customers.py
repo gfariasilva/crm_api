@@ -41,21 +41,16 @@ class Customers(Resource):
         gauth.LoadCredentialsFile(GOOGLE_CREDENTIALS_PATH)
         
         if gauth.credentials is None:
-            # Perform local webserver authentication if no credentials exist
             gauth.LocalWebserverAuth()
         elif gauth.access_token_expired:
             try:
-                # Attempt to refresh the token
                 gauth.Refresh()
             except Exception as e:
-                # If refresh fails, re-authenticate
                 print("Token refresh failed. Re-authenticating...")
                 gauth.LocalWebserverAuth()
         else:
-            # Authorize with existing credentials
             gauth.Authorize()
         
-        # Save the new credentials
         gauth.SaveCredentialsFile(GOOGLE_CREDENTIALS_PATH)
         return GoogleDrive(gauth)
 

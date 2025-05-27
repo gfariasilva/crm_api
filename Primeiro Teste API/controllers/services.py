@@ -16,20 +16,23 @@ class Services(Resource):
         conn = db_connect.connect()
         
         # Inserindo um novo serviço        
-        conn.execute(text("INSERT INTO Service (cpf_customer, cpf_provider, bank_document, materials_document, materials_cost, stay_cost, labor_cost) VALUES (:cpf_customer, :cpf_provider, :bank_document, :materials_document, :materials_cost, :stay_cost, :labor_cost)"), 
+        id = conn.execute(text("INSERT INTO Service (client_id, provider_id, initial_date, end_date, provider_cost, total_cost, working_days, status) VALUES (:client_id, :provider_id, :initial_date, :end_date, :provider_cost, :total_cost, :working_days, :status) RETURNING ID"), 
             {
-                "cpf_customer": request.json['cpf_customer'],
-                "cpf_provider": request.json['cpf_provider'],
-                "bank_document": request.json.get('bank_document', None),
-                "materials_document": request.json.get('materials_document', None),
-                "materials_cost": request.json.get('materials_cost', 0),
-                "stay_cost": request.json.get('stay_cost', 0),
-                "labor_cost": request.json.get('labor_cost', 0)
+                "client_id": request.json['client_id'],
+                "provider_id": request.json['provider_id'],
+                "initial_date": request.json['initial_date'],
+                "end_date": request.json['end_date'],
+                "provider_cost": request.json['provider_cost'],
+                "total_cost": request.json['total_cost'],
+                "working_days": request.json['working_days'],
+                "status": request.json['status']
             }
         )
 
+        id = id.fetchone()[0]
+
         # Recuperando o último registro inserido
-        result_query = conn.execute(text("SELECT * FROM Service ORDER BY id DESC LIMIT 1"))
+        result_query = conn.execute(text("SELECT * FROM Service WHERE id = :id"), {"id": id})
         result = [dict(zip(tuple(result_query.keys()), i)) for i in result_query.fetchall()]
         return jsonify(result)
 
@@ -37,14 +40,15 @@ class Services(Resource):
         conn = db_connect.connect()
 
         # Atualizando um serviço existente        
-        conn.execute(text("UPDATE Service SET bank_document = :bank_document, materials_document = :materials_document, materials_cost = :materials_cost, stay_cost = :stay_cost, labor_cost = :labor_cost WHERE id = :id"), 
+        conn.execute(text("UPDATE Service SET initial_date = :initial_date, end_date = :end_date, provider_cost = :provider_cost, total_cost = :total_cost, working_days = :working_days, status = :status WHERE id = :id"), 
             {
                 "id": request.json['id'],
-                "bank_document": request.json.get('bank_document', None),
-                "materials_document": request.json.get('materials_document', None),
-                "materials_cost": request.json.get('materials_cost', 0),
-                "stay_cost": request.json.get('stay_cost', 0),
-                "labor_cost": request.json.get('labor_cost', 0)
+                "initial_date": request.json['initial_date'],
+                "end_date": request.json['end_date'],
+                "provider_cost": request.json['provider_cost'],
+                "total_cost": request.json['total_cost'],
+                "working_days": request.json['working_days'],
+                "status": request.json['status']
             }
         )
 
