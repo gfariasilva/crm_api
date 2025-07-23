@@ -1,0 +1,7 @@
+requests
+faker
+flask
+flask_restful
+flask_sqlalchemy
+pydrive
+dotenv
